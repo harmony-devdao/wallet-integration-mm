@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Web3 Wallet Integration - MetaMask</title>
+    <link rel="stylesheet" href="https://harmony-devdao.github.io/hdd-style/css/harmony-dev-dao-style.css">
+</head>
+
+<body>
+    <header></header>
+    <main>
+        <div class="app">
+            <h1>Web3 Wallet Integration - MetaMask</h1>
+            <p>This is a demo how to basically implement a wallet in a website. Using the MetaMask wallet, as an
+                example.</p>
+            <p>When interacting with the website, you'll notice, that</p>
+            <label for="wallet-status">Wallet Status:</label>
+            <p id="wallet-status">Not Found</p>
+
+            <div id="connect-button" class="button" onclick="buttonConnect()">Connect</div>
+
+            <div id="network-group">
+                <label for="network">Network:</label>
+
+                <div class="button-group">
+                    <div class="button" data-chainid="1666600000" onclick="changeChain(1666600000)">Harmony Mainnet
+                    </div>
+                    <div class="button" data-chainid="1666700000" onclick="changeChain(1666700000)">Harmony Testnet
+                    </div>
+                    <div class="button" data-chainid="1666900000" onclick="changeChain(1666900000)">Harmony Devnet
+                    </div>
+                </div>
+                <p id="network" class="error">Not Connected</p>
+
+            </div>
+        </div>
+    </main>
+    <div id="notifications">
+    </div>
+    <script src="https://harmony-devdao.github.io/hdd-style/js/notification.js"></script>
+    <script>
+
+        let metamaskAvailable = false
+        let account = null
+        let network = null
+
+        /**
+         * We specify a list of supported networks!
+         */
+        const supportedNetworks = {
+            1666600000: {
+                chainId: numberToHexFormat(1666600000),
+                chainName: "Harmony Mainnet",
+                nativeCurrency: {
+                    name: "Harmony One",
+                    symbol: "ONE",
+                    decimals: 18
+                },
+                rpcUrls: [
+                    "https://api.s0.t.hmny.io"
+                ],
+                blockExplorerUrls: [
+                    "https://explorer.harmony.one"
+                ]
+            },
+            1666700000: {
+                chainId: numberToHexFormat(1666700000),
+                chainName: "Harmony Testnet",
+                nativeCurrency: {
+                    name: "Harmony Testnet One",
+                    symbol: "tONE",
+                    decimals: 18
+                },
+                rpcUrls: [
+                    "https://api.s0.b.hmny.io"
+                ],
+                blockExplorerUrls: [
+                    "https://explorer.pops.one/"
+                ]
+            },
+            1666900000: {
+                chainId: numberToHexFormat(1666900000),
+                chainName: "Harmony Devnet",
+                nativeCurrency: {
+                    name: "Harmony Devnet One",
+                    symbol: "dONE",
+                    decimals: 18
+                },
+                rpcUrls: [
+                    "https://api.s0.ps.hmny.io"
+                ],
+                blockExplorerUrls: [
+                    "https://explorer.ps.hmny.io"
+                ]
+            }
+        }
+
+        metamaskAvailable = checkIfMetaMaskIsInstalled()
+        update()
+        connect()
+
+        /**
+         * 1. Check If Wallet Is Installed
+         * 
+         */
+        function checkIfMetaMaskIsInstalled() {
+            //Check if we have any injected ethereum provider:
+            if (typeof window.ethereum !== 'undefined') {
+
+                //Check if the injected ethereum provider is MetaMask:
+                if (window.ethereum.isMetaMask) {
+                    return true
+                }
+            }
+            return false
+        }
+
+
+        /**
+         * Connects to wallet to the website on concurrent visits, without prompting the user
+         * with the MetaMask popup.
+         */
+        async function connect() {
+            if (!account) {
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                    account = accounts[0]
+                    network = await ethereum.request({ method: 'net_version' })
+
+                    ethereum.on("chainChanged", onChainChanged)
+                    ethereum.on("accountsChanged", onAccountChanged)
+
+                } catch (e) {
+                    Notification.notify(e, { type: Notification.Type.ERROR })
+                }
+                update()
+            }
+        }
+
+        /**
+          * Artificially disconnects the wallet from the page. The wallet still remains accessible
+          * and the permission in MetaMask is not revoked!
+          */
+        async function disconnect() {
+            account = null
+            ethereum.removeListener("chainChanged", onChainChanged)
+            ethereum.removeListener("accountsChanged", onAccountChanged)
+            ethereum = null
+        }
+
+        async function changeChain(chainId) {
+            if (ethereum) {
+                const supportedNetwork = supportedNetworks[chainId]
+                if (!supportedNetwork) {
+                    try {
+                        await ethereum.request({
+                            method: "wallet_switchEthereumChain",
+                            params: [{ chainId: numberToHexFormat(chainId) }]
+                        })
+                    } catch (e) {
+                        console.log(e)
+                        Notification.notify(e.message, { type: Notification.Type.ERROR })
+                    }
+                } else {
+                    try {
+                        await ethereum.request({
+                            method: "wallet_addEthereumChain",
+                            params: [supportedNetwork]
+                        })
+                    } catch (e) {
+                        Notification.notify(e.message, { type: Notification.Type.ERROR })
+                    }
+                }
+            }
+        }
+
+        function onChainChanged(chainId) {
+            network = parseInt(chainId, 16)
+            update()
+        }
+
+        function onAccountChanged(accounts) {
+            account = accounts[0]
+            update()
+        }
+
+        /**
+         * The 'connect' method assumes, there is already an connection and does not print
+         * the MetaMask interface when being called. Which allows that we have the account 
+         * correctly setup when we revisit the site.
+         * 
+         * When the wallet is not connected and we want to connect it, the 'connect' method
+         * is not sufficiant, as it doesn't show the MetaMask popup. Therefore we use the 'buttonConnect'
+         * to explicitly open the MetaMask poup.
+         */
+        async function buttonConnect() {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            connect();
+        }
+
+
+        /**
+         * Updates the frontend to match the current state!
+         */
+        function update() {
+            if (metamaskAvailable) {
+                setWalletStatus("MetaMask is installed.")
+                if (!account && window.ethereum.selectedAddress) {
+                    account = window.ethereum.selectedAddress
+                }
+
+                if (account != null) {
+                    setWalletStatus(account)
+                } else {
+                    setWalletStatus("Not Connected")
+                }
+
+                if (account == null) {
+                    document.getElementById("connect-button").style.display = "block"
+                } else {
+                    document.getElementById("connect-button").style.display = "none"
+                }
+            } else {
+                setWalletStatus("MetaMask is not installed")
+            }
+
+            if (network) {
+                document.getElementById("network-group").style.display = "block"
+                document.querySelectorAll("[data-chainid]").forEach(element => element.classList.remove("highlight"))
+
+                if (supportedNetworks[network]) {
+                    setNetworkStatus(``)
+                    document.querySelectorAll(`[data-chainid='${network}']`).forEach(element => {
+                        element.classList.add("highlight");
+                    })
+                } else {
+                    Notification.notify("Unsupported network!", { type: Notification.Type.ERROR })
+                    setNetworkStatus(`Unsupported network with chainId: ${network}`)
+                }
+            } else {
+                setNetworkStatus(`-`)
+                document.getElementById("network-group").style.display = "none"
+            }
+        }
+
+
+        /**
+         * Sets the text in the wallet-status element.
+         */
+        function setWalletStatus(str) {
+            console.log("Wallet-Status: " + str)
+            document.getElementById("wallet-status").textContent = str
+        }
+
+        function numberToHexFormat(number) {
+            if (isNaN(number)) throw new Error("Can only transform numbers to hex format.", number)
+            return "0x" + number.toString(16)
+        }
+
+        /**
+         * Sets the text in the wallet-status element.
+         */
+        function setNetworkStatus(str) {
+            document.getElementById("network").textContent = str
+        }
+
+        /**
+        * Sets the text in the wallet-status element.
+        */
+        function setAccountStatus(str) {
+            document.getElementById("account").textContent = str
+        }
+
+    </script>
+</body>
+
+</html>
